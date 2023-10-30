@@ -1,0 +1,27 @@
+[package]
+name = "zklogin-verifier"
+version = "0.1.7"
+license = "Apache-2.0"
+authors = ["Mysten Labs <build@mystenlabs.com>"]
+edition = "2021"
+publish = ["crates-io"]
+readme = "README.md"
+description = "A rust verifier for zkLogin signature"
+repository = "https://github.com/MystenLabs/zklogin-verifier"
+
+[dependencies]
+tokio = { version = "1.0", features = ["full"] }
+fastcrypto = { git = "https://github.com/MystenLabs/fastcrypto", rev = "802c1ac98061687d6ce024849c747a250dbeea52" }
+fastcrypto-zkp = { git = "https://github.com/MystenLabs/fastcrypto", rev = "802c1ac98061687d6ce024849c747a250dbeea52", package = "fastcrypto-zkp" }
+axum = "0.6.20"
+tracing = "0.1"
+reqwest = { version = "0.11.20", default_features = false, features = ["blocking", "json", "rustls-tls"] }
+parking_lot = "0.12.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.68"
+sui-types = { git = "https://github.com/MystenLabs/sui", rev = "e16665bb77845e160d2847e1af72eaa0344d1b28", package = "sui-types"}
+shared-crypto = { git = "https://github.com/MystenLabs/sui", rev = "e16665bb77845e160d2847e1af72eaa0344d1b28", package = "shared-crypto"}
+sui-sdk = { git = "https://github.com/MystenLabs/sui", rev = "e16665bb77845e160d2847e1af72eaa0344d1b28", package = "sui-sdk"}
+bcs = "0.1.4"
+im = "15"

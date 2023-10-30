@@ -1,0 +1,42 @@
+name: Docs
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "**.rs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+  workflow_dispatch:
+
+
+jobs:
+  docs:
+    name: Generate crate documentation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c # pin@v3
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # pin@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          override: true
+
+      - name: Generate documentation
+        uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # pin@v1
+        env:
+          RUSTDOCFLAGS: "--enable-index-page -Zunstable-options"
+        with:
+          command: doc
+          args: --workspace --no-deps
+
+      - name: Deploy documentation
+        uses: peaceiris/actions-gh-pages@373f7f263a76c20808c831209c920827a82a2847 # pin@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./target/doc
+          destination_dir: docs
