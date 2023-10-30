@@ -69,10 +69,10 @@ pub enum SuiEnv {
 impl SuiEnv {
     fn get_params(&self) -> (&str, ZkLoginEnv) {
         match self {
-            SuiEnv::Mainnet => ("", ZkLoginEnv::Prod),
-            SuiEnv::Testnet => ("", ZkLoginEnv::Prod),
-            SuiEnv::Devnet => ("", ZkLoginEnv::Test),
-            SuiEnv::Localnet => ("", ZkLoginEnv::Test),
+            SuiEnv::Mainnet => ("https://fullnode.mainnet.sui.io:443", ZkLoginEnv::Prod),
+            SuiEnv::Testnet => ("https://fullnode.testnet.sui.io:443", ZkLoginEnv::Prod),
+            SuiEnv::Devnet => ("https://fullnode.devnet.sui.io:443", ZkLoginEnv::Test),
+            SuiEnv::Localnet => ("http://127.0.0.1:9000", ZkLoginEnv::Test),
         }
     }
 }
@@ -85,12 +85,10 @@ pub struct VerifyResponse {
 }
 
 /// Error enum for get salt response.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum VerifyError {
-    /// The ephemeral signature failed to verify.
-    EphemeralSignatureError,
     /// The Groth16 proof failed to verify.
-    ProofVerifyError,
+    GenericError(String),
     /// Fail to parse payload.
     ParsingError,
     /// Error when getting epoch from sui client.
@@ -100,10 +98,9 @@ pub enum VerifyError {
 impl IntoResponse for VerifyError {
     fn into_response(self) -> Response {
         let (status, error_message) = match self {
-            VerifyError::EphemeralSignatureError => (StatusCode::BAD_REQUEST, "Invalid eph sig"),
-            VerifyError::ProofVerifyError => (StatusCode::BAD_REQUEST, "Invalid proof"),
-            VerifyError::ParsingError => (StatusCode::BAD_REQUEST, "Parsing error"),
-            VerifyError::GetEpochError => (StatusCode::BAD_REQUEST, "Cannot get epoch"),
+            VerifyError::GenericError(e) => (StatusCode::BAD_REQUEST, e),
+            VerifyError::ParsingError => (StatusCode::BAD_REQUEST, "Parsing error".to_string()),
+            VerifyError::GetEpochError => (StatusCode::BAD_REQUEST, "Cannot get epoch".to_string()),
         };
         let body = Json(json!({
             "error": error_message,
@@ -165,7 +162,7 @@ pub async fn verify(
                         &aux_verify_data,
                     ) {
                         Ok(_) => Ok(Json(VerifyResponse { is_verified: true })),
-                        Err(_) => Err(VerifyError::ProofVerifyError),
+                        Err(e) => Err(VerifyError::GenericError(e.to_string())),
                     }
                 }
                 IntentScope::PersonalMessage => {
@@ -190,7 +187,7 @@ pub async fn verify(
                         &aux_verify_data,
                     ) {
                         Ok(_) => Ok(Json(VerifyResponse { is_verified: true })),
-                        Err(_) => Err(VerifyError::ProofVerifyError),
+                        Err(e) => Err(VerifyError::GenericError(e.to_string())),
                     }
                 }
                 _ => Err(VerifyError::ParsingError),
