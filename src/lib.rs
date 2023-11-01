@@ -1,22 +1,17 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use axum::response::{IntoResponse, Response};
-use axum::{extract::State, Json};
 use fastcrypto::encoding::{Base64, Encoding};
 use fastcrypto_zkp::bn254::{
     zk_login::{JwkId, JWK},
     zk_login_api::ZkLoginEnv,
 };
 use im::hashmap::HashMap as ImHashMap;
-use parking_lot::RwLock;
-use reqwest::StatusCode;
-use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde::Deserialize;
 use shared_crypto::intent::IntentVersion;
 use shared_crypto::intent::{AppId, Intent, IntentMessage, IntentScope, PersonalMessage};
-use std::{collections::HashMap, sync::Arc};
-use sui_sdk::SuiClientBuilder;
+use wasm_bindgen::JsValue;
+use std::collections::HashMap;
 use sui_types::committee::EpochId;
 use sui_types::{
     base_types::SuiAddress,
@@ -24,12 +19,13 @@ use sui_types::{
     signature::{AuthenticatorTrait, GenericSignature, VerifyParams},
     transaction::TransactionData,
 };
-use tracing::info;
+use crate::utils::VerifyError;
 
 #[cfg(test)]
 #[path = "test.rs"]
 pub mod test;
 
+<<<<<<< Updated upstream
 /// Application state that contains the seed and JWKs.
 #[derive(Clone, Debug)]
 pub struct AppState {
@@ -141,6 +137,23 @@ pub async fn verify(
     let parsed: ImHashMap<JwkId, JWK> = state.jwks.read().clone().into_iter().collect();
     let aux_verify_data = VerifyParams::new(parsed, vec![], env, true);
     info!("aux_verify_data: {:?}", aux_verify_data);
+=======
+pub mod utils;
+
+/// Additional params needed to verify a zkLogin signature.
+/// They need to be fetched onchain or determined by the caller.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdditionalParams {
+    /// The current epoch of the desited network to verify the signature against.
+    curr_epoch: EpochId,
+    /// The hashmap of JWKs to verify the signature. It should corresponds to
+    /// the JWK that the JWT was issued against (usually the latest).
+    jwks: HashMap<JwkId, JWK>,
+    /// The env flag to verify the signature. It should be Prod for signature
+    /// intended for Mainnet and Testnet, Test for Devnet and Localnet.
+    env: ZkLoginEnv,
+}
+>>>>>>> Stashed changes
 
     match GenericSignature::from_bytes(
         &Base64::decode(&payload.signature).map_err(|_| VerifyError::ParsingError)?,
@@ -194,5 +207,47 @@ pub async fn verify(
             }
         }
         _ => Err(VerifyError::ParsingError),
+    }
+}
+
+#[wasm_bindgen]
+pub fn verify_personal_message_js(
+    bytes: String,
+    signature: String,
+    params: JsValue,
+) -> bool {
+    let parsed_param: AdditionalParams = serde_wasm_bindgen::from_value(params).unwrap();
+    let parsed_bytes = match Base64::decode(&bytes) {
+        Ok(b) => b,
+        Err(_) => return false,
+    };
+    let parsed_sig = match Base64::decode(&signature) {
+        Ok(b) => b,
+        Err(_) => return false,
+    };
+    match verify_personal_message(&parsed_bytes, &parsed_sig, parsed_param) {
+        Ok(_) => true,
+        Err(_) => false,
+    }
+}
+
+#[wasm_bindgen]
+pub fn verify_transaction_data_js(
+    bytes: String,
+    signature: String,
+    params: JsValue,
+) -> bool {
+    let parsed_param: AdditionalParams = serde_wasm_bindgen::from_value(params).unwrap();
+    let parsed_bytes = match Base64::decode(&bytes) {
+        Ok(b) => b,
+        Err(_) => return false,
+    };
+    let parsed_sig = match Base64::decode(&signature) {
+        Ok(b) => b,
+        Err(_) => return false,
+    };
+    match verify_transaction_data(&parsed_bytes, &parsed_sig, parsed_param) {
+        Ok(_) => true,
+        Err(_) => false,
     }
 }

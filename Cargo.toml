@@ -1,6 +1,6 @@
 [package]
 name = "zklogin-verifier"
-version = "0.1.7"
+version = "0.1.0"
 license = "Apache-2.0"
 authors = ["Mysten Labs <build@mystenlabs.com>"]
 edition = "2021"
@@ -25,3 +25,9 @@ shared-crypto = { git = "https://github.com/MystenLabs/sui", rev = "e16665bb7784
 sui-sdk = { git = "https://github.com/MystenLabs/sui", rev = "e16665bb77845e160d2847e1af72eaa0344d1b28", package = "sui-sdk"}
 bcs = "0.1.4"
 im = "15"
+wasm-bindgen = "0.2"
+serde-wasm-bindgen = "0.5.0"
+getrandom = { version = "0.2", features = ["js"] }
+
+[lib]
+crate-type = ["cdylib", "rlib"]
