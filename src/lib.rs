@@ -19,7 +19,6 @@ use std::{collections::HashMap, sync::Arc};
 use sui_sdk::SuiClientBuilder;
 use sui_types::committee::EpochId;
 use sui_types::{
-    base_types::SuiAddress,
     crypto::ToFromBytes,
     signature::{AuthenticatorTrait, GenericSignature, VerifyParams},
     transaction::TransactionData,
@@ -30,14 +29,14 @@ use tracing::info;
 #[path = "test.rs"]
 pub mod test;
 
-/// Application state that contains the seed and JWKs.
+/// Application state that contains the JWKs
 #[derive(Clone, Debug)]
 pub struct AppState {
-    /// This is the latest JWKs stored in a mapping from iss -> (kid -> JWK).
+    /// Latest JWKs stored in a mapping from (iss, kid) -> JWK.
     pub jwks: Arc<RwLock<HashMap<JwkId, JWK>>>,
 }
 
-/// Request to get salt. It contains the JWT token.
+/// Request payload used to verify a zkLogin signature.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VerifyRequest {
     /// The Base64 encoded zkLogin signature.
@@ -47,16 +46,15 @@ pub struct VerifyRequest {
     /// The intent scope, can be either TransactionData or PersonalMessage.
     /// This determines how the `bytes` is deserialized.
     pub intent_scope: IntentScope,
-    /// The author of the intent.
-    pub author: Option<SuiAddress>,
-    /// The network to verify the signature against. This determins the
+    /// The network to verify the signature against. This determines the
     /// ZkLoginEnv.
     pub network: Option<SuiEnv>,
     /// The current epoch to verify the signature against. If not provided,
-    /// use `network` to fetch the current epoch.
+    /// use `network` to construct a Sui client and fetch the current epoch.
     pub curr_epoch: Option<EpochId>,
 }
 
+/// Sui environment to decide what network to use.
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub enum SuiEnv {
     #[default]
@@ -67,6 +65,7 @@ pub enum SuiEnv {
 }
 
 impl SuiEnv {
+    /// Returns the url string and ZkLoginEnv for the given Sui environment.
     fn get_params(&self) -> (&str, ZkLoginEnv) {
         match self {
             SuiEnv::Mainnet => ("https://fullnode.mainnet.sui.io:443", ZkLoginEnv::Prod),
@@ -77,30 +76,36 @@ impl SuiEnv {
     }
 }
 
-/// Response to get salt.
+/// Response for whether a zkLogin signature is verified.
 #[derive(Debug, Serialize)]
 pub struct VerifyResponse {
     /// The salt value represented as a BigInt
     pub is_verified: bool,
 }
 
-/// Error enum for get salt response.
+/// Enum for verify errors.
 #[derive(Debug, PartialEq)]
 pub enum VerifyError {
-    /// The Groth16 proof failed to verify.
+    /// Failed to verify the signature.
     GenericError(String),
-    /// Fail to parse payload.
+    /// Failed to parse something in payload.
     ParsingError,
-    /// Error when getting epoch from sui client.
+    /// Failed to get epoch from sui client.
     GetEpochError,
+    /// Failed to derive address.
+    AddressDeriveError,
 }
 
 impl IntoResponse for VerifyError {
+    /// Parse the error into a response.
     fn into_response(self) -> Response {
         let (status, error_message) = match self {
             VerifyError::GenericError(e) => (StatusCode::BAD_REQUEST, e),
             VerifyError::ParsingError => (StatusCode::BAD_REQUEST, "Parsing error".to_string()),
             VerifyError::GetEpochError => (StatusCode::BAD_REQUEST, "Cannot get epoch".to_string()),
+            VerifyError::AddressDeriveError => {
+                (StatusCode::BAD_REQUEST, "Address derive error".to_string())
+            }
         };
         let body = Json(json!({
             "error": error_message,
@@ -113,7 +118,7 @@ pub async fn verify(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<VerifyRequest>,
 ) -> Result<Json<VerifyResponse>, VerifyError> {
-    info!("verify called");
+    info!("verify called {:?}", payload);
 
     let network = payload.network.unwrap_or_default();
     let (url, env) = network.get_params();
@@ -136,63 +141,105 @@ pub async fn verify(
                 .epoch
         }
     };
-    info!("curr_epoch: {:?}", curr_epoch);
+    let params = AdditionalParams {
+        curr_epoch,
+        jwks: state.jwks.read().clone(),
+        env,
+    };
+    info!("params: {:?}", params);
+    let bytes = Base64::decode(&payload.bytes).map_err(|_| VerifyError::ParsingError)?;
+    let sig_bytes = Base64::decode(&payload.signature).map_err(|_| VerifyError::ParsingError)?;
+    match verify_message(&bytes, &sig_bytes, payload.intent_scope, params) {
+        Ok(_) => Ok(Json(VerifyResponse { is_verified: true })),
+        Err(e) => Err(e),
+    }
+}
 
-    let parsed: ImHashMap<JwkId, JWK> = state.jwks.read().clone().into_iter().collect();
-    let aux_verify_data = VerifyParams::new(parsed, vec![], env, true);
-    info!("aux_verify_data: {:?}", aux_verify_data);
+/// Additional params needed to verify a zkLogin signature.
+/// They need to be fetched onchain or determined by the caller.
+#[derive(Debug)]
+pub struct AdditionalParams {
+    /// The current epoch of the desited network to verify the signature against.
+    curr_epoch: EpochId,
+    /// The hashmap of JWKs to verify the signature. It should corresponds to
+    /// the JWK that the JWT was issued against (usually the latest).
+    jwks: HashMap<JwkId, JWK>,
+    /// The env flag to verify the signature. It should be Prod for signature
+    /// intended for Mainnet and Testnet, Test for Devnet and Localnet.
+    env: ZkLoginEnv,
+}
 
-    match GenericSignature::from_bytes(
-        &Base64::decode(&payload.signature).map_err(|_| VerifyError::ParsingError)?,
-    )
-    .map_err(|_| VerifyError::ParsingError)?
-    {
-        GenericSignature::ZkLoginAuthenticator(zk) => {
-            let bytes = Base64::decode(&payload.bytes).map_err(|_| VerifyError::ParsingError)?;
-            match payload.intent_scope {
-                IntentScope::TransactionData => {
-                    let tx_data: TransactionData =
-                        bcs::from_bytes(&bytes).map_err(|_| VerifyError::ParsingError)?;
-                    let intent_msg = IntentMessage::new(Intent::sui_transaction(), tx_data.clone());
-                    let author = tx_data.execution_parts().1;
-                    match zk.verify_authenticator(
-                        &intent_msg,
-                        author,
-                        Some(curr_epoch),
-                        &aux_verify_data,
-                    ) {
-                        Ok(_) => Ok(Json(VerifyResponse { is_verified: true })),
-                        Err(e) => Err(VerifyError::GenericError(e.to_string())),
-                    }
+/// Verify a personal message provided in its bcs bytes against the signature
+/// and its additional params.
+pub fn verify_personal_message(
+    bytes: &[u8],
+    signature: &[u8],
+    params: AdditionalParams,
+) -> Result<(), VerifyError> {
+    verify_message(bytes, signature, IntentScope::PersonalMessage, params)
+}
+
+/// Verify a transaction data provided in its bcs bytes against the signature
+/// and its additional params.
+pub fn verify_transaction_data(
+    bytes: &[u8],
+    signature: &[u8],
+    params: AdditionalParams,
+) -> Result<(), VerifyError> {
+    verify_message(bytes, signature, IntentScope::TransactionData, params)
+}
+
+/// Helper function to verify a zkLogin signature against the provided bytes
+/// based on its intent scope.
+fn verify_message(
+    bytes: &[u8],
+    signature: &[u8],
+    scope: IntentScope,
+    params: AdditionalParams,
+) -> Result<(), VerifyError> {
+    let parsed: ImHashMap<JwkId, JWK> = params.jwks.into_iter().collect();
+    let aux_verify_data = VerifyParams::new(parsed, vec![], params.env, true);
+    match GenericSignature::from_bytes(signature).map_err(|_| VerifyError::ParsingError)? {
+        GenericSignature::ZkLoginAuthenticator(zk) => match scope {
+            IntentScope::TransactionData => {
+                let tx_data: TransactionData =
+                    bcs::from_bytes(bytes).map_err(|_| VerifyError::ParsingError)?;
+                let intent_msg = IntentMessage::new(Intent::sui_transaction(), tx_data.clone());
+                let author = tx_data.execution_parts().1;
+                match zk.verify_authenticator(
+                    &intent_msg,
+                    author,
+                    Some(params.curr_epoch),
+                    &aux_verify_data,
+                ) {
+                    Ok(_) => Ok(()),
+                    Err(e) => Err(VerifyError::GenericError(e.to_string())),
                 }
-                IntentScope::PersonalMessage => {
-                    let tx_data: PersonalMessage =
-                        bcs::from_bytes(&bytes).map_err(|_| VerifyError::ParsingError)?;
-                    let intent_msg = IntentMessage::new(
-                        Intent {
-                            scope: IntentScope::PersonalMessage,
-                            version: IntentVersion::V0,
-                            app_id: AppId::Sui,
-                        },
-                        tx_data,
-                    );
-                    let author = match payload.author {
-                        Some(author) => author,
-                        None => return Err(VerifyError::ParsingError),
-                    };
-                    match zk.verify_authenticator(
-                        &intent_msg,
-                        author,
-                        Some(curr_epoch),
-                        &aux_verify_data,
-                    ) {
-                        Ok(_) => Ok(Json(VerifyResponse { is_verified: true })),
-                        Err(e) => Err(VerifyError::GenericError(e.to_string())),
-                    }
-                }
-                _ => Err(VerifyError::ParsingError),
             }
-        }
+            IntentScope::PersonalMessage => {
+                let data: PersonalMessage =
+                    bcs::from_bytes(bytes).map_err(|_| VerifyError::ParsingError)?;
+                let intent_msg = IntentMessage::new(
+                    Intent {
+                        scope: IntentScope::PersonalMessage,
+                        version: IntentVersion::V0,
+                        app_id: AppId::Sui,
+                    },
+                    data,
+                );
+                let author = (&zk).try_into().map_err(|_| VerifyError::ParsingError)?;
+                match zk.verify_authenticator(
+                    &intent_msg,
+                    author,
+                    Some(params.curr_epoch),
+                    &aux_verify_data,
+                ) {
+                    Ok(_) => Ok(()),
+                    Err(e) => Err(VerifyError::GenericError(e.to_string())),
+                }
+            }
+            _ => Err(VerifyError::ParsingError),
+        },
         _ => Err(VerifyError::ParsingError),
     }
 }
