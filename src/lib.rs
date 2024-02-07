@@ -139,7 +139,7 @@ pub async fn verify(
     info!("curr_epoch: {:?}", curr_epoch);
 
     let parsed: ImHashMap<JwkId, JWK> = state.jwks.read().clone().into_iter().collect();
-    let aux_verify_data = VerifyParams::new(parsed, vec![], env, true);
+    let aux_verify_data = VerifyParams::new(parsed, vec![], env, true, true);
     info!("aux_verify_data: {:?}", aux_verify_data);
 
     match GenericSignature::from_bytes(
