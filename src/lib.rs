@@ -166,8 +166,7 @@ pub async fn verify(
                     }
                 }
                 IntentScope::PersonalMessage => {
-                    let tx_data: PersonalMessage =
-                        bcs::from_bytes(&bytes).map_err(|_| VerifyError::ParsingError)?;
+                    let tx_data = PersonalMessage { message: bytes };
                     let intent_msg = IntentMessage::new(
                         Intent {
                             scope: IntentScope::PersonalMessage,
