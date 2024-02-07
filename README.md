@@ -22,5 +22,5 @@ curl -X POST 0.0.0.0:3000/verify -H 'Content-Type: application/json' -d '{"signa
 2. Accepted `intent_scope`: 0 (TransactionData), 3 (PersonalMessage). Defined in [Sui](https://github.com/MystenLabs/sui/blob/7181ea91b6752fb75aa1e163047428f1201685e4/crates/shared-crypto/src/intent.rs#L59). 
 3. Accepted `network`: Localnet, Devnet, Testnet, Mainnet.
 4. `curr_epoch` is optional: If not provided, it is retrieved from Sui based on `network`.
-5. `author` is optional for `intent_scope`: 0 but required for `intent_scope`: 3.
+5. `author`: The ZKLogin SuiAddress of the signer. It is optional for `intent_scope`: 0, but required for `intent_scope`: 3.
 
