@@ -21,4 +21,6 @@ curl -X POST 0.0.0.0:3000/verify -H 'Content-Type: application/json' -d '{"signa
 1. This verifier currently can verify providers defined [here](https://github.com/MystenLabs/fastcrypto/blob/802c1ac98061687d6ce024849c747a250dbeea52/fastcrypto-zkp/src/bn254/zk_login.rs#L80). For supported providers per network, see [doc](https://docs.sui.io/build/zk_login#openid-providers).
 2. Accepted `intent_scope`: 0 (TransactionData), 3 (PersonalMessage). Defined in [Sui](https://github.com/MystenLabs/sui/blob/7181ea91b6752fb75aa1e163047428f1201685e4/crates/shared-crypto/src/intent.rs#L59). 
 3. Accepted `network`: Localnet, Devnet, Testnet, Mainnet.
-4. `curr_epoch` is optional: If not provided, it is retrieved from Sui based on `network`. 
+4. `curr_epoch` is optional: If not provided, it is retrieved from Sui based on `network`.
+5. `author`: The ZKLogin SuiAddress of the signer. It is optional for `intent_scope`: 0, but required for `intent_scope`: 3.
+
