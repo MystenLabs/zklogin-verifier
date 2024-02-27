@@ -20,8 +20,8 @@ parking_lot = "0.12.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.68"
-sui-types = { git = "https://github.com/MystenLabs/sui", rev = "8ce29fe3fd12834a07ff024f01350bbc7a110a7c", package = "sui-types"}
-shared-crypto = { git = "https://github.com/MystenLabs/sui", rev = "8ce29fe3fd12834a07ff024f01350bbc7a110a7c", package = "shared-crypto"}
-sui-sdk = { git = "https://github.com/MystenLabs/sui", rev = "8ce29fe3fd12834a07ff024f01350bbc7a110a7c", package = "sui-sdk"}
+sui-types = { git = "https://github.com/MystenLabs/sui", rev = "bec7d1b02067af9f5a91841282436fc132e85f2b", package = "sui-types"}
+shared-crypto = { git = "https://github.com/MystenLabs/sui", rev = "bec7d1b02067af9f5a91841282436fc132e85f2b", package = "shared-crypto"}
+sui-sdk = { git = "https://github.com/MystenLabs/sui", rev = "bec7d1b02067af9f5a91841282436fc132e85f2b", package = "sui-sdk"}
 bcs = "0.1.4"
 im = "15"
