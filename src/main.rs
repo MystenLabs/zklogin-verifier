@@ -33,6 +33,7 @@ async fn main() {
                 OIDCProvider::Kakao,
                 OIDCProvider::Apple,
                 OIDCProvider::Slack,
+                OIDCProvider::Playtron,
             ] {
                 match fetch_jwks(&p, &client).await {
                     Err(e) => {

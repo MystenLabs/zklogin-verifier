@@ -1,6 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::{extract::State, Json};
 use fastcrypto::encoding::{Base64, Encoding};
@@ -10,7 +11,6 @@ use fastcrypto_zkp::bn254::{
 };
 use im::hashmap::HashMap as ImHashMap;
 use parking_lot::RwLock;
-use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use shared_crypto::intent::IntentVersion;
@@ -18,14 +18,14 @@ use shared_crypto::intent::{AppId, Intent, IntentMessage, IntentScope, PersonalM
 use std::{collections::HashMap, sync::Arc};
 use sui_sdk::SuiClientBuilder;
 use sui_types::committee::EpochId;
+use sui_types::signature_verification::VerifiedDigestCache;
 use sui_types::{
     base_types::SuiAddress,
     crypto::ToFromBytes,
-    signature::{AuthenticatorTrait, GenericSignature, VerifyParams},
+    signature::{GenericSignature, VerifyParams},
     transaction::TransactionData,
 };
 use tracing::info;
-
 #[cfg(test)]
 #[path = "test.rs"]
 pub mod test;
@@ -139,7 +139,7 @@ pub async fn verify(
     info!("curr_epoch: {:?}", curr_epoch);
 
     let parsed: ImHashMap<JwkId, JWK> = state.jwks.read().clone().into_iter().collect();
-    let aux_verify_data = VerifyParams::new(parsed, vec![], env, true, true);
+    let aux_verify_data = VerifyParams::new(parsed, vec![], env, true, true, true, None);
     info!("aux_verify_data: {:?}", aux_verify_data);
 
     match GenericSignature::from_bytes(
@@ -155,11 +155,13 @@ pub async fn verify(
                         bcs::from_bytes(&bytes).map_err(|_| VerifyError::ParsingError)?;
                     let intent_msg = IntentMessage::new(Intent::sui_transaction(), tx_data.clone());
                     let author = tx_data.execution_parts().1;
-                    match zk.verify_authenticator(
+                    let sig = GenericSignature::ZkLoginAuthenticator(zk.clone());
+                    match sig.verify_authenticator(
                         &intent_msg,
                         author,
-                        Some(curr_epoch),
+                        curr_epoch,
                         &aux_verify_data,
+                        Arc::new(VerifiedDigestCache::new_empty()),
                     ) {
                         Ok(_) => Ok(Json(VerifyResponse { is_verified: true })),
                         Err(e) => Err(VerifyError::GenericError(e.to_string())),
@@ -179,11 +181,13 @@ pub async fn verify(
                         Some(author) => author,
                         None => return Err(VerifyError::ParsingError),
                     };
-                    match zk.verify_authenticator(
+                    let sig = GenericSignature::ZkLoginAuthenticator(zk.clone());
+                    match sig.verify_authenticator(
                         &intent_msg,
                         author,
-                        Some(curr_epoch),
+                        curr_epoch,
                         &aux_verify_data,
+                        Arc::new(VerifiedDigestCache::new_empty()),
                     ) {
                         Ok(_) => Ok(Json(VerifyResponse { is_verified: true })),
                         Err(e) => Err(VerifyError::GenericError(e.to_string())),
