@@ -1,4 +1,2 @@
-var srcIndex = JSON.parse('{\
-"zklogin_verifier":["",[],["lib.rs"]]\
-}');
-createSrcSidebar();
+createSrcSidebar('[["zklogin_verifier",["",[],["lib.rs"]]]]');
+//{"start":19,"fragment_lengths":[39]}
