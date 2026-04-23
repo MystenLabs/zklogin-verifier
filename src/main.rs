@@ -34,6 +34,7 @@ async fn main() {
                 OIDCProvider::Apple,
                 OIDCProvider::Slack,
                 OIDCProvider::Playtron,
+                OIDCProvider::Onefc,
             ] {
                 match fetch_jwks(&p, &client).await {
                     Err(e) => {
